@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+
+# Database backups (keep main env_agent.db for project data)
+env_agent_backup*.db
+agent_vector.db-shm
+agent_vector.db-wal
+
+# Logs
+*.log
+
+# Debug HTML
+debug_row.html
+detail_test.html
+mee_detail.html
+openstd_test.html
+
+# Crawl temp data
+data/openstd_progress.json
+data/openstd_standards.jsonl
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local

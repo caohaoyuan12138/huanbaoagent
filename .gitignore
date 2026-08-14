@@ -1,0 +1,47 @@
+# Node
+node_modules/
+frontend/dist/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Database backups
+env_agent_backup*.db
+agent_vector.db-shm
+agent_vector.db-wal
+
+# Logs
+*.log
+
+# Debug files
+*.html
+!frontend/index.html
+
+# Temp data
+data/openstd_progress.json
+data/openstd_standards.jsonl
+scripts/search_results.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.env.local
+
+# NPM cache
+npm-cache/
+
+# Temp
+*.ps1
+backend/scripts/search_results.json

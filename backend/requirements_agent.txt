@@ -1,0 +1,4 @@
+# Agent dependencies
+# OpenAI / DeepSeek for LLM (optional, fallback to rule-based)
+# openai==1.47.0
+# tiktoken==0.7.0
