@@ -2,7 +2,7 @@
 化工环保 Agent - 自进化智能体核心
 支持工具链调用、记忆系统、向量检索、LLM推理、自进化循环
 """
-from fastapi import APIRouter, Depends, Body, HTTPException
+from fastapi import APIRouter, Depends, Body, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any, AsyncGenerator
@@ -122,6 +122,19 @@ async def chat(
 
     # 7. 记录使用
     memory.record_usage(session_id, message, "chat")
+
+    # 8. 记录工具性能
+    for tool_name in result.get("tools_used", []):
+        from app.db.models import ToolPerformance
+        perf = ToolPerformance(
+            tool_name=tool_name,
+            success=True,
+            session_id=session_id,
+            query_preview=message[:200],
+            created_at=datetime.now(),
+        )
+        db.add(perf)
+    db.commit()
 
     return {
         "reply": reply,
@@ -386,3 +399,65 @@ def knowledge_stats_endpoint(db: Session = Depends(get_db)):
         "vector_memories": vector_stats.get("semantic_memories", 0),
         "vector_knowledge": vector_stats.get("knowledge_base", 0),
     }
+
+
+@router.post("/feedback")
+def submit_feedback(
+    payload: dict = Body(...),
+    db: Session = Depends(get_db),
+):
+    """用户反馈 — 1=有用, -1=无用"""
+    from app.evolution import EvolutionEngine
+    session_id = payload.get("session_id", "default")
+    feedback = payload.get("feedback")  # 1 or -1
+    query = payload.get("query", "")
+
+    engine = EvolutionEngine(db)
+    engine.record_feedback(session_id, feedback, query)
+    return {"message": "反馈已记录", "feedback": feedback}
+
+
+@router.post("/evolve")
+async def trigger_evolution(
+    db: Session = Depends(get_db),
+):
+    """手动触发进化"""
+    from app.evolution import EvolutionEngine
+    tools = _get_tools(db)
+    memory = _get_memory(db)
+    engine = EvolutionEngine(tools.db, memory)
+
+    result = await engine.run_evolution_cycle(tools=tools)
+
+    # 同步到向量库
+    vector_mem = _get_vector_mem()
+    sessions = memory.list_sessions()
+    for session in sessions[:5]:
+        sid = session["session_id"]
+        turns = memory.get_turns(sid, limit=10)
+        for turn in turns[-3:]:
+            if turn["role"] == "user" and len(turn["content"]) > 20:
+                vector_mem.add_memory(sid, turn["content"], {"type": "user_query"})
+            elif turn["role"] == "assistant" and len(turn["content"]) > 30:
+                vector_mem.add_memory(sid, turn["content"], {"type": "assistant_reply"})
+
+    return result
+
+
+@router.get("/evolution/stats")
+def evolution_stats(db: Session = Depends(get_db)):
+    """进化统计"""
+    from app.evolution import EvolutionEngine
+    engine = EvolutionEngine(db)
+    return engine.get_evolution_stats()
+
+
+@router.get("/evolution/history")
+def evolution_history(
+    limit: int = Query(10, ge=1, le=50),
+    db: Session = Depends(get_db),
+):
+    """进化历史"""
+    from app.evolution import EvolutionEngine
+    engine = EvolutionEngine(db)
+    return engine.get_evolution_history(limit=limit)
