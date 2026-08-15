@@ -15,7 +15,7 @@ load_dotenv()
 from app.logging_config import setup_logging
 setup_logging()
 
-from app.routers import knowledge, reports, devices, news, agent, compare, import_data, alerts, compliance, graph, tenant, regulation, ws, sites
+from app.routers import knowledge, reports, devices, news, agent, compare, import_data, alerts, compliance, graph, tenant, regulation, ws, sites, external
 from app.evolution import EvolutionEngine
 from app.db.database import init_db
 from app.vector_memory import VectorMemory
@@ -188,6 +188,7 @@ app.include_router(graph.router, prefix="/api", tags=["知识图谱"])
 app.include_router(regulation.router, prefix="/api/regulation", tags=["公约条款"])
 app.include_router(ws.router, prefix="/api", tags=["WebSocket实时推送"])
 app.include_router(sites.router, prefix="/api", tags=["站点管理"])
+app.include_router(external.router, prefix="/api", tags=["外部数据接收"])
 
 
 @app.get("/api/health")
