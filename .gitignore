@@ -8,13 +8,19 @@ __pycache__/
 venv/
 env/
 
-# Database backups
-env_agent_backup*.db
+# Database
+*.db
+!backend/env_agent.db
+agent_vector.db
 agent_vector.db-shm
 agent_vector.db-wal
 
+# Database backups
+env_agent_backup*.db
+
 # Logs
 *.log
+logs/
 
 # Debug files
 *.html
@@ -34,6 +40,10 @@ scripts/search_results.json
 # OS
 .DS_Store
 Thumbs.db
+NUL
+CON
+COM1
+COM2
 
 # Environment
 .env

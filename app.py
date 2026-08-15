@@ -456,8 +456,7 @@ with page_buttons:
     ]):
         with cols[i]:
             if st.button(label, key=f"nav_{name}",
-                         style="text-align:center;color:#666;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:8px 4px;font-size:13px;",
-                         height="small"):
+                         type="secondary" if current_page == name else "primary"):
                 st.session_state.page = name
                 st.rerun()
 

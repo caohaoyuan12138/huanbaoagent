@@ -138,22 +138,25 @@ class MemoryManager:
         """检索相关记忆，带时间衰减"""
         from app.db.models import SemanticMemory
         import hashlib
-        from datetime import datetime, timedelta
+        from datetime import datetime
+        from sqlalchemy import and_, or_
 
         query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
         now = datetime.utcnow()
 
+        # 策略1: 语义检索（前缀匹配）
         related = (
             self.db.query(SemanticMemory)
             .filter(
                 SemanticMemory.session_id == session_id,
-                SemanticMemory.embedding_hash.like(f"{query_hash}%"),
+                SemanticMemory.embedding_hash.startswith(query_hash),
             )
             .order_by(SemanticMemory.access_count.desc())
             .limit(top_k * 2)
             .all()
         )
 
+        # 策略2: 降级到文本包含匹配
         if not related:
             related = (
                 self.db.query(SemanticMemory)
@@ -168,17 +171,22 @@ class MemoryManager:
 
         # 时间衰减：越旧的记忆权重越低
         for m in related:
-            age_days = (now - m.created_at).days if m.created_at else 0
-            decay_factor = 1.0 / (1.0 + age_days * 0.05)  # 每5天衰减5%
-            m.access_count = int(m.access_count * decay_factor)
+            if m.created_at:
+                age_days = (now - m.created_at).days
+                decay_factor = 1.0 / (1.0 + age_days * 0.05)
+                m.access_count = max(0, int(m.access_count * decay_factor))
 
-        self.db.commit()
+        try:
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
 
         results = []
         for m in related:
+            meta = m.meta_data or {}
             results.append({
                 "text": m.text,
-                "type": m.memory_type,
+                "type": meta.get("type", "semantic"),
                 "access_count": m.access_count,
                 "created_at": m.created_at,
             })

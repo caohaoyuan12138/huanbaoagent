@@ -1,6 +1,6 @@
 """
-化工环保 Agent - 自进化智能体核心
-支持工具链调用、记忆系统、向量检索、LLM推理、自进化循环
+化工环保 Agent - 自进化智能体核心 v3.0
+支持工具链调用、记忆系统、向量检索、LLM推理、自进化循环、上下文压缩
 """
 from fastapi import APIRouter, Depends, Body, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
@@ -18,6 +18,7 @@ from app.db.models import (
 from app.memory import MemoryManager
 from app.vector_memory import VectorMemory
 from app.tools import Tools
+from app.tools_registry import TOOL_REGISTRY
 from app.agent.loop import AgentLoop
 from app.llm_engine import LLMEngine
 from app.auth import require_auth, create_token
@@ -46,9 +47,6 @@ async def chat(
             raise HTTPException(status_code=401, detail="Invalid or expired token")
 
     message = payload.get("message", "").strip()
-    if not message:
-        raise HTTPException(status_code=400, detail="message 不能为空")
-
     session_id = payload.get("session_id", f"default_{datetime.utcnow().isoformat()[:13]}")
     mode = payload.get("mode", "react")
 
@@ -73,9 +71,6 @@ async def chat(
     result = await agent.run(
         query=message,
         session_id=session_id,
-        tools=tools,
-        memories=sql_memories,
-        knowledge=knowledge_context,
         mode=mode,
     )
 
@@ -94,6 +89,8 @@ async def chat(
     # 6. 保存对话到向量库和 SQL 记忆
     if reply:
         vector_mem.add_memory(session_id, reply, {"type": "assistant_reply"})
+        memory.save_turn(session_id, "user", message)
+        memory.save_turn(session_id, "assistant", reply)
 
     # 7. 记录使用
     memory.record_usage(session_id, message, "chat")
@@ -182,6 +179,8 @@ async def chat_stream(
 
         if reply:
             vector_mem.add_memory(session_id, reply, {"type": "assistant_reply"})
+            memory.save_turn(session_id, "user", message)
+            memory.save_turn(session_id, "assistant", reply)
 
         memory.record_usage(session_id, message, "chat")
 
@@ -227,6 +226,21 @@ def agent_status(db: Session = Depends(get_db)):
         "llm_model": llm.model,
         "last_evolution": last_evo.value if last_evo else None,
         "usage_stats": stats,
+        "tools": {
+            "count": len(TOOL_REGISTRY),
+            "names": list(TOOL_REGISTRY.keys()),
+            "categories": list(set(t["category"] for t in TOOL_REGISTRY.values())),
+        },
+    }
+
+
+@router.get("/tools")
+def list_tools():
+    """返回可用工具注册表（供前端展示）"""
+    return {
+        "tools": TOOL_REGISTRY,
+        "total": len(TOOL_REGISTRY),
+        "categories": list(set(t["category"] for t in TOOL_REGISTRY.values())),
     }
 
 

@@ -54,8 +54,7 @@ def _create_indexes():
         # 告警索引
         "CREATE INDEX IF NOT EXISTS idx_alerts_device ON alerts(device_id)",
         "CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)",
-        # 合规报告索引
-        "CREATE INDEX IF NOT EXISTS idx_compliance_tenant ON compliance_checks(tenant_id)",
+        # 合规报告索引（tenant_id 列可能不存在）
     ]
     with engine.connect() as conn:
         for sql in indexes:
