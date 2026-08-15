@@ -135,9 +135,13 @@ class MemoryManager:
         self.db.commit()
 
     def retrieve(self, session_id: str, query: str, top_k: int = 3) -> List[Dict]:
-        """检索相关记忆"""
+        """检索相关记忆，带时间衰减"""
         from app.db.models import SemanticMemory
+        import hashlib
+        from datetime import datetime, timedelta
+
         query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
+        now = datetime.utcnow()
 
         related = (
             self.db.query(SemanticMemory)
@@ -146,7 +150,7 @@ class MemoryManager:
                 SemanticMemory.embedding_hash.like(f"{query_hash}%"),
             )
             .order_by(SemanticMemory.access_count.desc())
-            .limit(top_k)
+            .limit(top_k * 2)
             .all()
         )
 
@@ -162,19 +166,27 @@ class MemoryManager:
                 .all()
             )
 
+        # 时间衰减：越旧的记忆权重越低
         for m in related:
-            m.access_count = (m.access_count or 0) + 1
+            age_days = (now - m.created_at).days if m.created_at else 0
+            decay_factor = 1.0 / (1.0 + age_days * 0.05)  # 每5天衰减5%
+            m.access_count = int(m.access_count * decay_factor)
+
         self.db.commit()
 
-        return [
-            {
+        results = []
+        for m in related:
+            results.append({
                 "text": m.text,
-                "metadata": m.meta_data or {},
-                "created_at": str(m.created_at),
-                "access_count": m.access_count or 0,
-            }
-            for m in related
-        ]
+                "type": m.memory_type,
+                "access_count": m.access_count,
+                "created_at": m.created_at,
+            })
+
+        if len(results) >= top_k:
+            return results[:top_k]
+
+        return results
 
     def get_semantic_memories(self, session_id: str, limit: int = 20) -> List[Dict]:
         """获取某会话的所有语义记忆"""

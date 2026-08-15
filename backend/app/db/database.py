@@ -1,6 +1,10 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
+import logging
+import time
+
+logger = logging.getLogger(__name__)
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./env_agent.db"
 
@@ -23,3 +27,40 @@ def get_db():
 async def init_db():
     from app.db.models import Base
     Base.metadata.create_all(bind=engine)
+    # 创建关键索引加速查询
+    _create_indexes()
+
+
+def _create_indexes():
+    """创建额外的数据库索引"""
+    indexes = [
+        # 设备读数常用查询索引
+        "CREATE INDEX IF NOT EXISTS idx_readings_device_tenant ON device_readings(device_id, tenant_id)",
+        "CREATE INDEX IF NOT EXISTS idx_readings_factor_ts ON device_readings(factor, timestamp)",
+        # 标准表索引
+        "CREATE INDEX IF NOT EXISTS idx_standards_number ON standards(standard_number)",
+        "CREATE INDEX IF NOT EXISTS idx_standards_title ON standards(title)",
+        "CREATE INDEX IF NOT EXISTS idx_standards_category ON standards(category)",
+        # 污染因子索引
+        "CREATE INDEX IF NOT EXISTS idx_factors_symbol ON pollution_factors(symbol)",
+        # 污染限值索引
+        "CREATE INDEX IF NOT EXISTS idx_limits_standard ON pollution_limits(standard_title)",
+        "CREATE INDEX IF NOT EXISTS idx_limits_factor ON pollution_limits(factor_id)",
+        # 新闻索引
+        "CREATE INDEX IF NOT EXISTS idx_news_title ON news_items(title)",
+        "CREATE INDEX IF NOT EXISTS idx_news_published ON news_items(published_at)",
+        # 向量记忆索引
+        "CREATE INDEX IF NOT EXISTS idx_semantic_session ON semantic_memories(session_id, memory_type)",
+        # 告警索引
+        "CREATE INDEX IF NOT EXISTS idx_alerts_device ON alerts(device_id)",
+        "CREATE INDEX IF NOT EXISTS idx_alerts_created ON alerts(created_at)",
+        # 合规报告索引
+        "CREATE INDEX IF NOT EXISTS idx_compliance_tenant ON compliance_checks(tenant_id)",
+    ]
+    with engine.connect() as conn:
+        for sql in indexes:
+            try:
+                conn.execute(text(sql))
+            except Exception as e:
+                logger.warning("索引创建失败 %s: %s", sql[:50], str(e)[:50])
+        conn.commit()

@@ -2,7 +2,7 @@
 化工环保 Agent - 自进化智能体核心
 支持工具链调用、记忆系统、向量检索、LLM推理、自进化循环
 """
-from fastapi import APIRouter, Depends, Body, HTTPException, Query
+from fastapi import APIRouter, Depends, Body, HTTPException, Query, Header
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any, AsyncGenerator
@@ -20,69 +20,44 @@ from app.vector_memory import VectorMemory
 from app.tools import Tools
 from app.agent.loop import AgentLoop
 from app.llm_engine import LLMEngine
+from app.auth import require_auth, create_token
 
 router = APIRouter()
 
-# 模块级单例（进程内保持状态）
-_memory: Optional[MemoryManager] = None
-_vector_mem: Optional[VectorMemory] = None
-_tools: Optional[Tools] = None
-_loop: Optional[AgentLoop] = None
-_llm: Optional[LLMEngine] = None
-
-
-def _get_memory(db: Session) -> MemoryManager:
-    global _memory
-    if _memory is None:
-        _memory = MemoryManager(db)
-    return _memory
-
-
-def _get_vector_mem() -> VectorMemory:
-    global _vector_mem
-    if _vector_mem is None:
-        _vector_mem = VectorMemory()
-    return _vector_mem
-
-
-def _get_tools(db: Session) -> Tools:
-    global _tools
-    if _tools is None:
-        _tools = Tools(db)
-    return _tools
-
-
-def _get_loop(db: Session) -> AgentLoop:
-    global _loop
-    if _loop is None:
-        _loop = AgentLoop(_get_memory(db), _get_tools(db))
-    return _loop
-
-
-def _get_llm() -> LLMEngine:
-    global _llm
-    if _llm is None:
-        _llm = LLMEngine()
-    return _llm
+# 配置常量
+MAX_SESSIONS = 20
+DEFAULT_LLM_TIMEOUT = 60
 
 
 @router.post("/chat")
 async def chat(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     主对话入口 — 支持工具调用、记忆检索、多步推理、LLM增强
     """
-    message = payload.get("message", "")
-    session_id = payload.get("session_id", "default")
+    # JWT 认证（可选）
+    if authorization:
+        token = authorization.replace("Bearer ", "").strip()
+        user_info = require_auth({"Authorization": f"Bearer {token}"})
+        if not user_info:
+            raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    message = payload.get("message", "").strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message 不能为空")
+
+    session_id = payload.get("session_id", f"default_{datetime.utcnow().isoformat()[:13]}")
     mode = payload.get("mode", "react")
 
-    memory = _get_memory(db)
-    vector_mem = _get_vector_mem()
-    tools = _get_tools(db)
-    agent = _get_loop(db)
-    llm = _get_llm()
+    # 请求级实例（每次请求独立，无共享状态）
+    memory = MemoryManager(db)
+    vector_mem = VectorMemory()
+    tools = Tools(db)
+    agent = AgentLoop(memory, tools)
+    llm = LLMEngine()
 
     # 1. 检索相关记忆（SQL + 向量）
     sql_memories = memory.retrieve(session_id, message, top_k=5)
@@ -153,19 +128,21 @@ async def chat(
 async def chat_stream(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
 ):
     """
     SSE 流式对话入口 — 与 /chat 逻辑相同，但按 token 流式返回。
     """
-    message = payload.get("message", "")
-    session_id = payload.get("session_id", "default")
+    message = payload.get("message", "").strip()
+    session_id = payload.get("session_id", f"default_{datetime.utcnow().isoformat()[:13]}")
     mode = payload.get("mode", "react")
 
-    memory = _get_memory(db)
-    vector_mem = _get_vector_mem()
-    tools = _get_tools(db)
-    agent = _get_loop(db)
-    llm = _get_llm()
+    # 请求级实例
+    memory = MemoryManager(db)
+    vector_mem = VectorMemory()
+    tools = Tools(db)
+    agent = AgentLoop(memory, tools)
+    llm = LLMEngine()
 
     sql_memories = memory.retrieve(session_id, message, top_k=5)
     vector_memories = vector_mem.search_memories(message, session_id, top_k=3)
@@ -228,10 +205,10 @@ async def chat_stream(
 
 @router.get("/status")
 def agent_status(db: Session = Depends(get_db)):
-    memory = _get_memory(db)
-    tools = _get_tools(db)
-    vector_mem = _get_vector_mem()
-    llm = _get_llm()
+    memory = MemoryManager(db)
+    tools = Tools(db)
+    vector_mem = VectorMemory()
+    llm = LLMEngine()
     stats = memory.get_usage_stats()
     sessions = memory.list_sessions()
     vector_stats = vector_mem.get_stats() if vector_mem else {}
@@ -255,8 +232,9 @@ def agent_status(db: Session = Depends(get_db)):
 
 @router.get("/guidance")
 def get_guidance(db: Session = Depends(get_db)):
-    memory = _get_memory(db)
-    tools = _get_tools(db)
+    memory = MemoryManager(db)
+    tools = Tools(db)
+    llm = LLMEngine()
     stats = memory.get_usage_stats()
     sessions = memory.list_sessions()
 
@@ -267,7 +245,7 @@ def get_guidance(db: Session = Depends(get_db)):
         {"name": "资讯采集", "status": "active", "description": "全网环保新闻与政策动态"},
         {"name": "网络爬取", "status": "active", "description": "自动爬取最新环保标准入库"},
         {"name": "向量记忆", "status": "active", "description": f"已存储 {stats.get('knowledge_entries', 0)} 条语义记忆"},
-        {"name": "LLM推理", "status": "active" if _get_llm().enabled else "inactive", "description": "DeepSeek/Qwen 智能推理"},
+        {"name": "LLM推理", "status": "active" if llm.enabled else "inactive", "description": "Agnes AI 智能推理"},
         {"name": "定时进化", "status": "active", "description": f"每6小时自动学习更新"},
     ]
 
@@ -285,13 +263,13 @@ def get_guidance(db: Session = Depends(get_db)):
         "suggestions": suggestions,
         "total_interactions": stats.get("total", 0),
         "knowledge_entries": stats.get("knowledge_entries", 0),
-        "llm_enabled": _get_llm().enabled,
+        "llm_enabled": llm.enabled,
     }
 
 
 @router.get("/memory/sessions")
 def list_sessions(db: Session = Depends(get_db)):
-    memory = _get_memory(db)
+    memory = MemoryManager(db)
     sessions = memory.list_sessions()
     for s in sessions:
         s["conversation"] = memory.get_session_summary(s["session_id"])["conversation"][-3:]
@@ -300,8 +278,8 @@ def list_sessions(db: Session = Depends(get_db)):
 
 @router.get("/memory/sessions/{session_id}")
 def get_session_detail(session_id: str, db: Session = Depends(get_db)):
-    memory = _get_memory(db)
-    vector_mem = _get_vector_mem()
+    memory = MemoryManager(db)
+    vector_mem = VectorMemory()
     summary = memory.get_session_summary(session_id)
     vector_items = vector_mem.search_memories("", session_id, top_k=10)
     return {
@@ -313,16 +291,16 @@ def get_session_detail(session_id: str, db: Session = Depends(get_db)):
 
 @router.delete("/memory/sessions/{session_id}")
 def clear_session(session_id: str, db: Session = Depends(get_db)):
-    memory = _get_memory(db)
+    memory = MemoryManager(db)
     memory.clear_session(session_id)
     return {"message": f"已清除会话 {session_id} 的记忆"}
 
 
 @router.post("/memory/clear-all")
 def clear_all_memory(db: Session = Depends(get_db)):
-    memory = _get_memory(db)
+    memory = MemoryManager(db)
     memory.clear_all()
-    _get_vector_mem().clear_all()
+    VectorMemory().clear_all()
     return {"message": "已清除所有记忆"}
 
 
@@ -330,9 +308,9 @@ def clear_all_memory(db: Session = Depends(get_db)):
 async def trigger_evolution(
     db: Session = Depends(get_db),
 ):
-    tools = _get_tools(db)
-    memory = _get_memory(db)
-    vector_mem = _get_vector_mem()
+    tools = Tools(db)
+    memory = MemoryManager(db)
+    vector_mem = VectorMemory()
     loop_engine = AgentLoop(memory, tools)
 
     result = await loop_engine.run_evolution_cycle(tools, memory)
@@ -356,7 +334,7 @@ async def crawl_standards_endpoint(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
 ):
-    tools = _get_tools(db)
+    tools = Tools(db)
     result = await tools.crawl_andingest_standards(
         source=payload.get("source", "auto"),
         limit=payload.get("limit", 20),
@@ -377,7 +355,7 @@ async def upload_data(
     payload: dict = Body(...),
     db: Session = Depends(get_db),
 ):
-    tools = _get_tools(db)
+    tools = Tools(db)
     result = await tools.process_uploaded_data(payload)
     return result
 
@@ -392,7 +370,7 @@ def knowledge_stats_endpoint(db: Session = Depends(get_db)):
     news = db.query(func.count(NewsItem.id)).scalar() or 0
     devices = db.query(func.count(Device.id)).scalar() or 0
     enterprise = db.query(func.count(EnterpriseStandard.id)).scalar() or 0
-    vector_stats = _get_vector_mem().get_stats() if _get_vector_mem() else {}
+    vector_stats = VectorMemory().get_stats()
     return {
         "standards": standards, "factors": factors, "limits": limits,
         "news": news, "devices": devices, "enterprise_standards": enterprise,
@@ -415,33 +393,6 @@ def submit_feedback(
     engine = EvolutionEngine(db)
     engine.record_feedback(session_id, feedback, query)
     return {"message": "反馈已记录", "feedback": feedback}
-
-
-@router.post("/evolve")
-async def trigger_evolution(
-    db: Session = Depends(get_db),
-):
-    """手动触发进化"""
-    from app.evolution import EvolutionEngine
-    tools = _get_tools(db)
-    memory = _get_memory(db)
-    engine = EvolutionEngine(tools.db, memory)
-
-    result = await engine.run_evolution_cycle(tools=tools)
-
-    # 同步到向量库
-    vector_mem = _get_vector_mem()
-    sessions = memory.list_sessions()
-    for session in sessions[:5]:
-        sid = session["session_id"]
-        turns = memory.get_turns(sid, limit=10)
-        for turn in turns[-3:]:
-            if turn["role"] == "user" and len(turn["content"]) > 20:
-                vector_mem.add_memory(sid, turn["content"], {"type": "user_query"})
-            elif turn["role"] == "assistant" and len(turn["content"]) > 30:
-                vector_mem.add_memory(sid, turn["content"], {"type": "assistant_reply"})
-
-    return result
 
 
 @router.get("/evolution/stats")

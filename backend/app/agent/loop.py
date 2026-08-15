@@ -376,6 +376,9 @@ class AgentLoop:
             ),
             "upload_data": lambda: tools.process_uploaded_data(args),
             "search_regulation": lambda: tools.search_regulation(args.get("query", "")),
+            "web_search": lambda: tools.web_search(
+                args.get("query", ""), args.get("max_results", 5)
+            ),
         }
 
         method = tool_methods.get(tool_name)

@@ -160,10 +160,11 @@ class SemanticMemory(Base):
     __tablename__ = "semantic_memories"
     id = Column(Integer, primary_key=True, index=True)
     session_id = Column(String(100), nullable=False, index=True)
+    memory_type = Column(String(20), nullable=False, index=True)
     text = Column(Text, nullable=False)
     embedding_hash = Column(String(32))
     meta_data = Column(JSON, default=dict)
-    created_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, nullable=False, index=True)
     access_count = Column(Integer, default=0)
 
 

@@ -13,9 +13,15 @@ try:
 except ImportError:
     HAS_HTTPX = False
 
-# LLM 配置（从环境变量读取，默认使用 Agnes AI）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
+
+# LLM 配置（从环境变量读取，强制要求 API Key）
 LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://apihub.agnes-ai.cn/v1")
-LLM_API_KEY = os.getenv("LLM_API_KEY", "sk-tbloODrSBKLqnOrShIK1W3bpaoIY0XWAuEa57N98oWTFfhGC")
+LLM_API_KEY = os.getenv("LLM_API_KEY", "")
 LLM_MODEL = os.getenv("LLM_MODEL", "agnes-2.0-flash")
 
 
@@ -32,10 +38,10 @@ class LLMEngine:
                    max_tokens: int = 2000, temperature: float = 0.3) -> Dict[str, Any]:
         """调用 LLM 生成回复"""
         if not self.enabled:
-            return {"error": "LLM API 未配置", "reply": ""}
+            return {"error": "LLM API 未配置，请在 .env 中设置 LLM_API_KEY", "reply": ""}
 
         if not HAS_HTTPX:
-            return {"error": "httpx 未安装", "reply": ""}
+            return {"error": "httpx 未安装，请运行: pip install httpx", "reply": ""}
 
         all_messages = []
         if system_prompt:
@@ -110,15 +116,13 @@ class LLMEngine:
         """LLM 不可用时的降级回复"""
         return f"""收到您的问题：「{query}」
 
-💡 当前 LLM 引擎未启用。
+💡 当前 LLM 引擎未启用，已启用规则模式。
 
 已为您检索到以下知识库信息：
 {self._format_knowledge(knowledge)}
 
-如需启用 AI 智能推理，请配置环境变量：
-  LLM_BASE_URL=https://apihub.agnes-ai.cn/v1
+如需启用 AI 智能推理，请在 backend/.env 中配置：
   LLM_API_KEY=sk-xxxx
-  LLM_MODEL=agnes-2.0-flash
 """
 
     def _format_knowledge(self, knowledge: Dict) -> str:

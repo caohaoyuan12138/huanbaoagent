@@ -7,6 +7,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
 import asyncio
+import os
+
+from dotenv import load_dotenv
+load_dotenv()
+
+from app.logging_config import setup_logging
+setup_logging()
 
 from app.routers import knowledge, reports, devices, news, agent, compare, import_data, alerts, compliance, graph, tenant, regulation
 from app.evolution import EvolutionEngine
@@ -17,7 +24,12 @@ from app.scheduler import start_evolution_task, stop_all_tasks
 from app.alert_checker import run_alert_checker
 from app.middleware.tenant import TenantMiddleware
 
-logging.basicConfig(level=logging.INFO)
+from app.logging_config import setup_logging
+setup_logging()
+
+# CORS 来源配置（从环境变量读取，支持逗号分隔多个域名）
+_cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8501")
+CORS_CONFIG = [url.strip() for url in _cors_origins.split(",") if url.strip()]
 logger = logging.getLogger(__name__)
 
 
@@ -147,7 +159,7 @@ app.add_middleware(TenantMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=CORS_CONFIG,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
