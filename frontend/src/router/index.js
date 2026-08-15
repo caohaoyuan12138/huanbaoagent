@@ -1,12 +1,19 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import Layout from '@/views/Layout.vue'
+import Operations from '@/views/Operations.vue'
 
 const routes = [
   {
     path: '/',
     component: Layout,
-    redirect: '/dashboard',
+    redirect: '/operations',
     children: [
+      {
+        path: 'operations',
+        name: 'Operations',
+        component: Operations,
+        meta: { title: '运维监控' },
+      },
       {
         path: 'dashboard',
         name: 'Dashboard',

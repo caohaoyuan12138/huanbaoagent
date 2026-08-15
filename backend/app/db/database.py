@@ -27,8 +27,51 @@ def get_db():
 async def init_db():
     from app.db.models import Base
     Base.metadata.create_all(bind=engine)
+    # 迁移: 为 devices 表添加健康指标列
+    _migrate_devices_table()
+    # 迁移: 创建 sites 表
+    _migrate_sites_table()
     # 创建关键索引加速查询
     _create_indexes()
+
+
+def _migrate_devices_table():
+    """迁移: 添加设备健康指标列"""
+    with engine.connect() as conn:
+        for col_sql in [
+            "ALTER TABLE devices ADD COLUMN site_id INTEGER",
+            "ALTER TABLE devices ADD COLUMN last_seen DATETIME",
+            "ALTER TABLE devices ADD COLUMN latency_ms FLOAT",
+            "ALTER TABLE devices ADD COLUMN uptime_percent FLOAT DEFAULT 0.0",
+            "ALTER TABLE devices ADD COLUMN total_readings INTEGER DEFAULT 0",
+        ]:
+            try:
+                conn.execute(text(col_sql))
+            except Exception:
+                pass  # 列已存在则忽略
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_devices_site ON devices(site_id)"))
+        conn.commit()
+
+
+def _migrate_sites_table():
+    """迁移: 创建站点表"""
+    with engine.connect() as conn:
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sites (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id INTEGER,
+                name VARCHAR(200) NOT NULL,
+                code VARCHAR(50),
+                address VARCHAR(500),
+                parent_id INTEGER,
+                contact_name VARCHAR(100),
+                contact_phone VARCHAR(20),
+                status VARCHAR(20) DEFAULT 'active',
+                created_at DATETIME NOT NULL
+            )
+        """))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_sites_tenant ON sites(tenant_id)"))
+        conn.commit()
 
 
 def _create_indexes():

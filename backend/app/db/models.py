@@ -77,10 +77,26 @@ class Tenant(Base):
     created_at = Column(DateTime, default=datetime.now)
 
 
+class Site(Base):
+    """站点/厂区 — 设备分层管理"""
+    __tablename__ = "sites"
+    id = Column(Integer, primary_key=True, index=True)
+    tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    name = Column(String(200), nullable=False)
+    code = Column(String(50), nullable=True)
+    address = Column(String(500))
+    parent_id = Column(Integer, nullable=True)  # 支持层级站点
+    contact_name = Column(String(100))
+    contact_phone = Column(String(20))
+    status = Column(String(20), default="active")
+    created_at = Column(DateTime, default=datetime.now)
+
+
 class Device(Base):
     __tablename__ = "devices"
     id = Column(Integer, primary_key=True, index=True)
     tenant_id = Column(Integer, ForeignKey("tenants.id"), nullable=True, index=True)
+    site_id = Column(Integer, nullable=True, index=True)  # 归属站点
     name = Column(String(200), nullable=False)
     factor = Column(String(50), nullable=False)
     unit = Column(String(20), nullable=False)
@@ -92,6 +108,11 @@ class Device(Base):
     port = Column(Integer, default=8000)
     timeout = Column(Float, default=5.0)
     status = Column(String(20), default="offline")
+    # 健康指标
+    last_seen = Column(DateTime, nullable=True)
+    latency_ms = Column(Float, nullable=True)
+    uptime_percent = Column(Float, default=0.0)
+    total_readings = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.now)
 
 

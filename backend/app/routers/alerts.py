@@ -9,6 +9,7 @@ from datetime import datetime
 from app.db.database import get_db
 from app.db.models import Alert, Device, PollutionLimit, PollutionFactor
 from sqlalchemy import func
+from app.websocket_service import get_ws_service
 
 router = APIRouter()
 

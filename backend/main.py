@@ -15,11 +15,13 @@ load_dotenv()
 from app.logging_config import setup_logging
 setup_logging()
 
-from app.routers import knowledge, reports, devices, news, agent, compare, import_data, alerts, compliance, graph, tenant, regulation
+from app.routers import knowledge, reports, devices, news, agent, compare, import_data, alerts, compliance, graph, tenant, regulation, ws, sites
 from app.evolution import EvolutionEngine
 from app.db.database import init_db
 from app.vector_memory import VectorMemory
 from app.llm_engine import LLMEngine
+from app.websocket_service import get_ws_service, reset_ws_service
+from app.device_health import get_health_monitor, reset_health_monitor
 from app.scheduler import start_evolution_task, stop_all_tasks
 from app.alert_checker import run_alert_checker
 from app.middleware.tenant import TenantMiddleware
@@ -120,6 +122,13 @@ async def _modbus_poll_cycle():
                             )
                             db.add(reading)
                     db.commit()
+                    health.record_reading(device.id, list(result["data"].values())[0] if result["data"] else 0)
+                    # 推送实时数据
+                    for key, value in result["data"].items():
+                        if isinstance(value, (int, float)):
+                            ws_svc.update_device_data(str(device.id), {
+                                "factor": key, "value": float(value), "unit": device.unit,
+                            })
                     logger.info("Modbus轮询成功: MN=%s 数据项=%d", mn, len(result["data"]))
                 else:
                     logger.warning("Modbus轮询失败: MN=%s", mn)
@@ -177,6 +186,8 @@ app.include_router(compliance.router, prefix="/api/compliance", tags=["合规检
 app.include_router(tenant.router, prefix="/api", tags=["租户管理"])
 app.include_router(graph.router, prefix="/api", tags=["知识图谱"])
 app.include_router(regulation.router, prefix="/api/regulation", tags=["公约条款"])
+app.include_router(ws.router, prefix="/api", tags=["WebSocket实时推送"])
+app.include_router(sites.router, prefix="/api", tags=["站点管理"])
 
 
 @app.get("/api/health")

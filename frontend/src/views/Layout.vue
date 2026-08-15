@@ -100,6 +100,7 @@ onMounted(() => {
 })
 
 const menuItems = [
+  { path: '/operations', title: '运维监控', icon: 'Monitor' },
   { path: '/dashboard', title: '仪表盘', icon: 'DataBoard' },
   { path: '/knowledge', title: '知识库', icon: 'Collection' },
   { path: '/reports', title: '报告写作', icon: 'Document' },

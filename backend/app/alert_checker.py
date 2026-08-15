@@ -12,7 +12,6 @@ from app.db.database import SessionLocal
 from app.db.models import (
     Device, DeviceReading, PollutionLimit, Alert, PollutionFactor
 )
-from app.feishu_notify import notify_alert
 
 logger = logging.getLogger(__name__)
 
@@ -98,21 +97,51 @@ async def _check_alerts():
             logger.info("告警已生成: device=%s factor=%s value=%s severity=%s",
                         device.name, factor_symbol, value, severity)
 
-            # 主动推送飞书告警
-            notify_alert(
-                device_name=device.name,
-                factor=factor_symbol,
-                value=value,
-                limit=limit_value,
-                unit=unit,
-                severity=severity,
-                message=message,
-            )
+            # 异步推送飞书 + WebSocket，不阻塞主循环
+            asyncio.create_task(_push_to_feishu(
+                device.name, factor_symbol, value, limit_value,
+                unit, severity, message,
+            ))
+            asyncio.create_task(_push_alert_to_ws({
+                "id": alert.id,
+                "device_id": device.id,
+                "factor": factor_symbol,
+                "value": value,
+                "limit_value": limit_value,
+                "severity": severity,
+                "message": message,
+            }))
 
     except Exception as e:
         logger.error("告警检查失败: %s", str(e))
     finally:
         db.close()
+
+
+async def _push_to_feishu(device_name, factor, value, limit, unit, severity, message):
+    """推送到飞书（异步执行避免阻塞主循环）"""
+    try:
+        from app.feishu_notify import send_feishu_alert
+        send_feishu_alert(
+            device_name=device_name,
+            factor=factor,
+            value=value,
+            limit_value=limit,
+            severity=severity,
+            message=message,
+        )
+    except Exception as e:
+        logger.warning(f"飞书推送失败: {e}")
+
+
+async def _push_alert_to_ws(alert_data):
+    """推送告警到 WebSocket"""
+    try:
+        from app.websocket_service import get_ws_service
+        ws = get_ws_service()
+        ws.push_alert(alert_data)
+    except Exception as e:
+        logger.debug(f"WebSocket告警推送失败: {e}")
 
 
 async def run_alert_checker():

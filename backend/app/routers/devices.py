@@ -11,6 +11,8 @@ import logging
 
 from app.db.database import get_db
 from app.db.models import Device, DeviceReading, PollutionLimit
+from app.websocket_service import get_ws_service
+from app.device_health import get_health_monitor
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
