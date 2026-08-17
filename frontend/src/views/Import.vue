@@ -138,6 +138,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Sheet } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const uploadReadings = ref(null)

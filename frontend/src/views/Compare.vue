@@ -101,6 +101,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
+import { Ratio } from '@element-plus/icons-vue'
 import api from '@/api'
 
 const factors = ref([])

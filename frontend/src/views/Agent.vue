@@ -439,7 +439,7 @@ const triggerEvolution = async () => {
   try {
     const res = await api.post('/agent/evolve')
     evolutionLogs.value.unshift(res)
-    ElMessage.success(`进化完成！新增 ${res.new_knowledge} 条知识`)
+    ElMessage.success(`进化完成！新增 ${res.knowledge_added ?? 0} 条知识`)
     await loadStats()
   } catch (e) {
     ElMessage.error('进化失败')
